@@ -74,14 +74,28 @@ class ShortcutTask:
         """启动录音任务"""
         logger.info(f"[{self.shortcut.key}] 触发：开始录音")
 
+        # 检查服务端是否已连接（没开 server 时直接提示，不空跑录音）
+        if not self.app.ws.is_connected:
+            try:
+                from core.client.ui import toast
+                toast("服务端未启动，请先运行 start_server", duration=2500, bg="#b8860b")
+            except Exception:
+                pass
+            logger.warning("快捷键触发，但服务端未连接，跳过录音")
+            self.is_recording = False
+            return
+
         # 记录开始时间
         self.recording_start_time = time.time()
         self.is_recording = True
 
+        # 按需开启音频流（录音时才占用麦克风，避免空闲时一直占用）
+        self._open_stream()
+
         # 将开始标志放入队列
         asyncio.run_coroutine_threadsafe(
             self.state.queue_in.put({'type': 'begin', 'time': self.recording_start_time, 'data': None}),
-            self.app.loop
+            self.app.loop,
         )
 
         # 更新录音状态
@@ -97,6 +111,24 @@ class ShortcutTask:
             self.app.loop,
         )
 
+    def _open_stream(self) -> None:
+        """开启音频输入流（录音时占用麦克风）。"""
+        try:
+            if self.app.stream and not getattr(self.app.stream, '_running', False):
+                self.app.stream.start()
+                logger.debug("录音开始：已开启音频流")
+        except Exception as e:
+            logger.warning(f"开启音频流失败: {e}")
+
+    def _close_stream(self) -> None:
+        """关闭音频输入流（停止录音后释放麦克风占用）。"""
+        try:
+            if self.app.stream and getattr(self.app.stream, '_running', False):
+                self.app.stream.stop()
+                logger.debug("录音结束：已关闭音频流（释放麦克风）")
+        except Exception as e:
+            logger.warning(f"关闭音频流失败: {e}")
+
     def cancel(self) -> None:
         """取消录音任务（时间过短）"""
         logger.debug(f"[{self.shortcut.key}] 取消录音任务（时间过短）")
@@ -104,6 +136,7 @@ class ShortcutTask:
         self.is_recording = False
         self.state.stop_recording()
         self._status.stop()
+        self._close_stream()
 
         self.task.cancel()
         self.task = None
@@ -115,6 +148,7 @@ class ShortcutTask:
         self.is_recording = False
         self.state.stop_recording()
         self._status.stop()
+        self._close_stream()
 
         asyncio.run_coroutine_threadsafe(
             self.state.queue_in.put({

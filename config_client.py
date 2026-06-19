@@ -15,22 +15,42 @@ class ClientConfig:
     port = '6016'               # Server 端口
 
     # 快捷键配置列表
+    # 说明：可同时配置多个候选快捷键，但同一时间只会有一个生效
+    #       （由 settings.json 的 hotkey 字段决定激活哪一个，默认 'alt+`'）。
+    #       hold_mode=False 为「单击切换」：按一次开始说话、再按一次结束。
     shortcuts = [
         {
             'key': 'caps_lock',     # 监听大写锁定键
             'type': 'keyboard',     # 是键盘快捷键
             'suppress': True,      # 阻塞按键（短按会补发）
             'hold_mode': True,      # 长按模式
-            'enabled': True         # 启用此快捷键
+            'enabled': False        # 默认不启用（由托盘菜单选择激活）
         },
         {
             'key': 'x2',
             'type': 'mouse',
             'suppress': True,
             'hold_mode': True,
-            'enabled': True
+            'enabled': False
+        },
+        {
+            'key': 'alt+`',         # Alt + 反引号（单击切换模式）
+            'type': 'keyboard',
+            'suppress': False,      # 不拦截，避免影响其他程序的 Alt 组合
+            'hold_mode': False,     # 单击切换：按一下开始、再按一下结束
+            'enabled': True         # 默认激活
+        },
+        {
+            'key': 'alt+q',         # Alt + Q（单击切换模式，备选）
+            'type': 'keyboard',
+            'suppress': False,
+            'hold_mode': False,
+            'enabled': False
         },
     ]
+
+    # 默认激活的快捷键（在 settings.json 中可被覆盖）
+    default_hotkey = 'alt+`'
 
     threshold    = 0.3          # 快捷键触发阈值（秒）
 
@@ -66,8 +86,16 @@ class ClientConfig:
     # 日志配置
     log_level = 'DEBUG'          # 日志级别：'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
 
-    mic_seg_duration = 60       # 麦克风听写时分段长度：60秒
+    mic_seg_duration = 60       # 麦克风听写时分段长度：60秒（VAD 模式下不用于切分）
     mic_seg_overlap = 4         # 麦克风听写时分段重叠：4秒
+
+    # —— VAD 停顿分句（语音输入法风格：说完一句停顿即出字）——
+    vad_enabled          = True     # 开启停顿自动分句
+    vad_silence_threshold= 0.004    # 静音能量阈值（RMS），低于此算静音（环境安静可调更低以保留轻语气词）
+    vad_silence_duration = 0.8      # 连续静音多少秒判定为一次停顿
+    vad_min_utterance    = 0.3      # 一句话最短多少秒才提交（过滤咳嗽/键盘声等误触）
+    vad_max_utterance    = 15.0     # 一句话最长多少秒强制截断（防持续说话无限长）
+    vad_tail_trim        = 0.15     # 提交时裁掉尾部多少秒静音（保留尾音，别裁太多）
 
     file_seg_duration = 60      # 转录文件时分段长度
     file_seg_overlap = 4        # 转录文件时分段重叠

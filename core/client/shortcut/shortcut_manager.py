@@ -87,7 +87,8 @@ class ShortcutManager:
             task._manager_ref = lambda: self  # 弱引用，用于回调
             task.pool = self._pool
             task.threshold = shortcut.get_threshold(Config.threshold)
-            self.tasks[shortcut.key] = task
+            # 用 base_key（组合键的主键）作为匹配键，使 vk_to_name() 能命中
+            self.tasks[shortcut.base_key] = task
 
     # ========== 监听器创建 ==========
 
@@ -111,6 +112,13 @@ class ShortcutManager:
                 return True
 
             task = self.tasks[key_name]
+
+            # 组合键修饰符校验：仅在「按下」时要求修饰键同时按下，
+            # 否则放行（不影响普通按键）。松开(KEYUP)时不校验——
+            # 否则当用户松开主键时 Alt 可能已先松，导致 keyup 丢失、
+            # 单击模式状态错乱（表现为"时出时不出"）。
+            if msg in KEY_DOWN_MESSAGES and task.shortcut.modifier == 'alt' and not KeyMapper.is_alt_pressed():
+                return True
 
             # 处理按键事件
             if msg in KEY_DOWN_MESSAGES:

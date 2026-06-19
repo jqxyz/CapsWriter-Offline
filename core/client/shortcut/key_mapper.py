@@ -38,6 +38,11 @@ WM_KEYUP = 0x0101
 WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
 
+# 修饰键虚拟键码（用于 GetAsyncKeyState 检测）
+VK_MENU = 0x12    # Alt
+VK_CONTROL = 0x11 # Ctrl
+VK_SHIFT = 0x10   # Shift
+
 # Windows 鼠标消息常量
 WM_XBUTTONDOWN = 0x020B
 WM_XBUTTONUP = 0x020C
@@ -115,6 +120,37 @@ class KeyMapper:
 
         # 未知键码，返回 vk_ 格式
         return f'vk_{vk}'
+
+    @staticmethod
+    def is_alt_pressed() -> bool:
+        """检查 Alt 键当前是否按下（用于组合键修饰符检测）。
+
+        使用 GetAsyncKeyState，可在键盘 hook 中安全调用。
+        """
+        import ctypes
+        return bool(ctypes.windll.user32.GetAsyncKeyState(VK_MENU) & 0x8000)
+
+    @staticmethod
+    def parse_combo(key_str: str) -> tuple:
+        """解析快捷键字符串，分离修饰符与主键。
+
+        Args:
+            key_str: 快捷键名称，如 'alt+`'、'alt+q'、'caps_lock'
+
+        Returns:
+            (modifier, base_key): modifier 为 'alt' 或 None；
+                                  base_key 为去除修饰符后的主键名。
+                                  例：'alt+`' -> ('alt', '`')
+                                      'caps_lock' -> (None, 'caps_lock')
+        """
+        key_str = key_str.lower().strip()
+        if '+' in key_str:
+            parts = [p.strip() for p in key_str.split('+')]
+            if len(parts) == 2:
+                mod, base = parts[0], parts[1]
+                if mod in ('alt', 'ctrl', 'shift'):
+                    return mod, base
+        return None, key_str
 
     @staticmethod
     def name_to_key(key_name: str):

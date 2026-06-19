@@ -74,11 +74,66 @@ class CapsWriterClient:
 
         # 实例化硬件资源管理组件
         self.stream = AudioStreamManager(self)
-        self.shortcut = ShortcutManager(self, [Shortcut(**sc) for sc in Config.shortcuts])
+        self.shortcut = ShortcutManager(self, self._build_shortcuts())
         self.udp = UDPController(self.shortcut)
 
         # 内存清理
         empty_current_working_set()
+
+    def _build_shortcuts(self):
+        """根据 settings.json 选中的快捷键，构建 Shortcut 列表（仅激活选中项）。"""
+        from core.client import settings_store
+
+        active = settings_store.get_setting('hotkey', Config.default_hotkey)
+        # 规范化键名（与 Shortcut._normalize_key 一致：小写 + backquote->`）
+        active = active.lower().strip().replace('backquote', '`')
+
+        shortcuts = []
+        for sc in Config.shortcuts:
+            cfg = dict(sc)
+            cfg['enabled'] = (cfg['key'].lower().strip().replace('backquote', '`') == active)
+            shortcuts.append(Shortcut(**cfg))
+        self._active_hotkey = active
+        return shortcuts
+
+    @property
+    def active_hotkey(self) -> str:
+        """当前激活的快捷键名（规范化后）。"""
+        return getattr(self, '_active_hotkey', Config.default_hotkey)
+
+    def set_active_hotkey(self, hotkey: str) -> bool:
+        """切换激活的快捷键，写盘并热重载监听器（不重启程序）。
+
+        Args:
+            hotkey: 快捷键名，如 'alt+`'、'alt+q'、'caps_lock'、'x2'
+
+        Returns:
+            True 表示切换成功
+        """
+        from core.client import settings_store
+        hotkey = hotkey.lower().strip().replace('backquote', '`')
+
+        # 校验是否为已配置的候选键
+        valid_keys = [sc['key'].lower().strip().replace('backquote', '`') for sc in Config.shortcuts]
+        if hotkey not in valid_keys:
+            logger.warning(f"未知的快捷键候选: {hotkey}")
+            return False
+
+        # 写入持久化
+        settings_store.set_setting('hotkey', hotkey)
+
+        # 停掉旧监听器（取消进行中的录音）
+        try:
+            self.shortcut.stop()
+        except Exception as e:
+            logger.warning(f"停止旧快捷键监听器时出错: {e}")
+
+        # 重建并启动新监听器
+        self.shortcut = ShortcutManager(self, self._build_shortcuts())
+        self.shortcut.start()
+        self.udp.manager = self.shortcut  # UDP 控制器引用更新（指向新管理器）
+        logger.info(f"已切换激活快捷键: {hotkey}")
+        return True
 
     def stop(self):
         """
@@ -90,6 +145,13 @@ class CapsWriterClient:
         self.udp.stop()
         self.shortcut.stop()
         self.stream.stop()
+
+        # 1.5 终止由本客户端拉起的服务端子进程（避免残留累积）
+        try:
+            from .server_launcher import stop_server
+            stop_server()
+        except Exception as e:
+            logger.warning(f"清理服务端子进程时出错: {e}")
 
         # 2. 托盘资源
         self.tray.stop()

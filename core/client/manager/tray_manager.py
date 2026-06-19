@@ -41,9 +41,50 @@ class TrayManager:
                 ('✨ 热词', self._add_hotword),
                 ('🧹 清除记忆', self._clear_memory),
                 ('♻️ 重开音频', self._restart_audio),
+                self._build_hotkey_menu(),
             ]
         )
         logger.info("托盘图标已启用")
+
+    def _build_hotkey_menu(self):
+        """构建「快捷键」单选子菜单（pystray.MenuItem）。
+
+        候选项来自 Config.shortcuts，点击即切换并热重载监听器。
+        """
+        import pystray
+        from config_client import ClientConfig as Config
+
+        # 候选快捷键：key -> 显示名
+        def _norm(k):
+            return k.lower().strip().replace('backquote', '`')
+        candidates = {
+            'alt+`':   'Alt + ` (单击切换)',
+            'alt+q':   'Alt + Q (单击切换)',
+            'caps_lock': 'CapsLock (长按)',
+            'x2':      '鼠标侧键 X2 (长按)',
+        }
+
+        def _make_picker(candidate_key, disp):
+            # pystray 点击回调签名各版本不一，用可变参数兼容
+            def _on_pick(*args):
+                self.app.set_active_hotkey(candidate_key)
+                from core.client.ui import toast
+                toast(f"快捷键已切换：{disp}", duration=2000, bg="#075077")
+            return _on_pick
+
+        def _checked(candidate):
+            # pystray checked 回调签名各版本不一（有的传 icon，有的传 icon+item），
+            # 用可变参数兼容，避免签名不匹配导致 icon.run 崩溃
+            def _fn(*args):
+                return _norm(self.app.active_hotkey) == candidate
+            return _fn
+
+        items = []
+        for key, disp in candidates.items():
+            items.append(pystray.MenuItem(
+                disp, _make_picker(key, disp), radio=True, checked=_checked(key)
+            ))
+        return pystray.MenuItem('⌨️ 快捷键', pystray.Menu(*items))
 
     def stop(self):
         """停止托盘图标"""

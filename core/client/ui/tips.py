@@ -31,20 +31,32 @@ def _format_shortcut_name(key: str) -> str:
     return key.replace('_', ' ').title()
 
 
+def _get_active_shortcut_key() -> str:
+    """获取当前激活的快捷键名（来自 settings.json，回退到默认）。"""
+    try:
+        from core.client import settings_store
+        key = settings_store.get_setting('hotkey', Config.default_hotkey)
+        return key.lower().strip().replace('backquote', '`')
+    except Exception:
+        return Config.default_hotkey
+
+
 def _get_shortcuts_display() -> str:
     """
-    获取所有启用快捷键的显示字符串
+    获取当前激活快捷键的显示字符串。
 
     Returns:
-        str: 格式化的快捷键列表，用逗号分隔
+        str: 格式化后的快捷键名（如 'Alt+`'、'CapsLock'）
     """
-    enabled_shortcuts = [sc for sc in Config.shortcuts if sc.get('enabled', True)]
-    if not enabled_shortcuts:
-        return '未配置快捷键'
+    key = _get_active_shortcut_key()
+    return _format_shortcut_name(key)
 
-    # 格式化每个快捷键名称
-    formatted = [_format_shortcut_name(sc['key']) for sc in enabled_shortcuts]
-    return '、'.join(formatted)
+
+def _is_click_mode() -> bool:
+    """当前激活的快捷键是否为单击切换模式（按一次开始、再按一次结束）。"""
+    key = _get_active_shortcut_key()
+    # 组合键（alt+x）配置为单击切换；caps_lock / x2 为长按
+    return key.startswith('alt+')
 
 
 class TipsDisplay:
@@ -58,6 +70,10 @@ class TipsDisplay:
     def show_mic_tips() -> None:
         """显示麦克风模式的启动提示"""
         shortcuts_display = _get_shortcuts_display()
+        if _is_click_mode():
+            step3 = f"3. 按 `{shortcuts_display}` 开始说话，再按一次结束并上屏（单击切换）。"
+        else:
+            step3 = f"3. 按住快捷键（`{shortcuts_display}`）说话，松开即输入。"
 
         console.rule('[bold #d55252]CapsWriter Offline Client[/]')
         console.print(f'\n版本：[bold green]{__version__}[/]')
@@ -72,7 +88,7 @@ class TipsDisplay:
 
 1. 运行 **Server** 端，它作为「大脑」负责 AI 推理，约占用 1.5G 内存。
 2. 运行 **Client** 端，它作为「耳朵」负责听音和打字上屏。
-3. 按住快捷键（`{shortcuts_display}`）说话，松开即输入。
+{step3}
 4. 将音视频文件拖动到 **Client** 端 exe 文件后松开，可转录生成字幕。
 
 
@@ -88,7 +104,7 @@ class TipsDisplay:
 
 注意事项：
 
-1. 当前快捷键：`{shortcuts_display}`，可在 `config.py` 中修改。
+1. 当前快捷键：`{shortcuts_display}`，可在**右下角托盘图标的「快捷键」菜单**中切换。
 2. 如需在管理员权限运行的程序（如任务管理器、游戏）中输入，请**以管理员权限运行客户端**。
 3. 识别结果默认去除末尾逗句号。
 4. 录音保存功能：若检测到 `FFmpeg`，会以 `mp3` 压缩保存；否则保存为 `wav` 。

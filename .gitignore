@@ -184,7 +184,10 @@ file_*.txt
 *summary*.md
 
 release
-*.dll 
+*.dll
 *.exe
 
 models/**/*.cfg
+
+# 运行时用户设置（个人偏好，不应进仓库）
+settings.json

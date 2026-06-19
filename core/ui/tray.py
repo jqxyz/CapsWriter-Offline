@@ -229,9 +229,15 @@ class _TraySystem:
         ]
 
         # 添加额外选项
+        # 每项可以是 (名称, 回调) 元组，也可以是已构建好的 pystray.MenuItem（用于子菜单等）
         if more_options:
-            for opt_name, opt_func in more_options:
-                menu_items.append(item(opt_name, opt_func))
+            import pystray as _pystray
+            for opt in more_options:
+                if isinstance(opt, _pystray.MenuItem):
+                    menu_items.append(opt)
+                else:
+                    opt_name, opt_func = opt
+                    menu_items.append(item(opt_name, opt_func))
 
         menu_items.append(item('🔄 重启', self.on_restart))
         menu_items.append(item('❌ 退出', self.on_exit))
@@ -246,6 +252,7 @@ class _TraySystem:
     def toggle_window(self) -> None:
         """切换窗口显示状态"""
         if not self.hwnd or user32 is None:
+            # 没有控制台窗口（打包环境等），跳过窗口操作，仅保留托盘
             return
 
         if _is_window_visible(self.hwnd):
@@ -321,9 +328,22 @@ class _TraySystem:
 
     def start(self) -> None:
         """启动托盘系统"""
+        def _run_with_log():
+            try:
+                logger.info("托盘图标线程开始运行 icon.run()")
+                self.icon.run()
+                logger.info("托盘图标线程 icon.run() 已返回（正常退出）")
+            except Exception as e:
+                logger.error(f"托盘图标线程崩溃: {e}", exc_info=True)
+
         # 托盘图标线程
-        t_tray = threading.Thread(target=self.icon.run, daemon=False)
+        t_tray = threading.Thread(target=_run_with_log, daemon=False)
         t_tray.start()
+        # 给图标线程一点时间真正创建窗口，以便捕获立即崩溃
+        import time as _t
+        _t.sleep(0.3)
+        if not t_tray.is_alive():
+            logger.error("托盘图标线程启动后立即退出，图标未创建")
 
         # 状态监控线程
         t_monitor = threading.Thread(target=self.monitor_loop, daemon=True)
@@ -358,6 +378,7 @@ def enable_min_to_tray(name: Optional[str] = None, icon_path: Optional[str] = No
     if not _check_tray_available():
         logger.info("托盘功能不可用，跳过启用")
         return
+    logger.debug("托盘检查1通过：_check_tray_available=True")
 
     # DPI 感知设置
     try:
@@ -368,13 +389,22 @@ def enable_min_to_tray(name: Optional[str] = None, icon_path: Optional[str] = No
 
     with _lock:
         if _tray_instance is not None:
+            logger.debug("托盘跳过：已有实例")
             return  # 已启动
 
-        if not _get_console_hwnd():
-            return  # 没有控制台窗口
+        # 注意：托盘图标（pystray）本身不依赖控制台窗口。
+        # 即使找不到控制台窗口（PyInstaller 打包、Windows Terminal 等情况下
+        # GetConsoleWindow 可能返回 0），也应该创建托盘图标——
+        # 只是没有窗口可隐藏/禁用关闭按钮而已。
+        hwnd = _get_console_hwnd()
+        if not hwnd:
+            logger.info("未找到控制台窗口，仍将创建托盘图标（跳过窗口隐藏/禁用关闭按钮）")
+        else:
+            logger.debug(f"控制台窗口 hwnd={hwnd}")
 
         _tray_instance = _TraySystem(name, icon_path, more_options)
         _tray_instance.start()
+        logger.debug("托盘 _TraySystem.start() 已调用，图标应已创建")
 
 
 

@@ -34,10 +34,17 @@ class Shortcut:
     threshold: Optional[float] = None  # None 表示使用 Config.threshold
     enabled: bool = True
 
+    # 派生属性（在 __post_init__ 中计算，不属于构造参数）
+    modifier: Optional[str] = None   # 'alt' / 'ctrl' / 'shift' / None
+    base_key: str = ''               # 去除修饰符后的主键名（用于事件匹配）
+
     def __post_init__(self):
         """初始化后验证配置"""
         # 规范化键名
         self.key = self._normalize_key(self.key)
+        # 解析组合键：拆出修饰符与主键
+        from core.client.shortcut.key_mapper import KeyMapper
+        self.modifier, self.base_key = KeyMapper.parse_combo(self.key)
 
     def get_threshold(self, default_threshold: float = 0.3) -> float:
         """
@@ -71,6 +78,7 @@ class Shortcut:
             'caps lock': 'caps_lock',
             ' ': 'space',
             'control': 'ctrl',
+            'backquote': '`',
         }
 
         for old, new in aliases.items():

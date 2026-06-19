@@ -33,8 +33,21 @@ class MicRunner:
         # 2. UI 提示
         TipsDisplay.show_mic_tips()
 
-        # 3. 开启运行组件 (音频流、快捷键监听)
-        self.app.stream.start()
+        # 3. 探测音频设备（仅检测并打印，不占用麦克风——
+        #    实际的音频流在用户按下快捷键开始录音时才开启，停止即关闭）
+        try:
+            import sounddevice as sd
+            from core.client.state import console
+            device = sd.query_devices(kind='input')
+            console.print(
+                f'使用默认音频设备：[italic]{device.get("name", "未知")}，'
+                f'声道数：{min(2, device["max_input_channels"])}',
+                end='\n\n'
+            )
+        except Exception:
+            pass
+
+        # 4. 开启快捷键监听（音频流改为录音时按需开启）
         self.app.shortcut.start()
         
         # 4. 开启 UDP 控制 (如果启用)
@@ -47,11 +60,20 @@ class MicRunner:
 
     async def run(self):
         """麦克风模式主入口"""
-        
+
         logger.info("=" * 50)
         logger.info(f"CapsWriter Offline Client {__version__} (麦克风模式)")
         logger.info(f"日志级别: {Config.log_level}")
-        
+
+        # 0. 确保服务端在运行（没开则自动拉起，实现"单程序"体验）
+        try:
+            from ..server_launcher import ensure_server_running
+            from core.client.state import console
+            if not ensure_server_running():
+                console.print('[bold yellow]提示：未能自动启动服务端，请手动运行 start_server[/bold yellow]')
+        except Exception as e:
+            logger.warning(f"自动拉起服务端时出错: {e}")
+
         # 1. 资源启动
         self.start_resources()
         

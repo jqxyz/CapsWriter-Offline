@@ -38,23 +38,25 @@ class ShortcutEventHandler:
                 task.launch()
             return
 
-        # 单击模式
-        if task.released:
-            from threading import Event
-            task.pressed = True
-            task.released = False
-            task.event = Event()  # 创建新事件对象
-            self.pool.submit(self._count_down, task)
-            self.pool.submit(self._manage_task, task)
+        # 单击切换模式（搜狗式：按一下开始，再按一下结束）
+        # 防连发：只有上一次按键已经「松开」才接受这次按下
+        # （Windows 按住不放会狂发 keydown，需用此过滤）
+        if not task.released:
+            return
+        task.released = False  # 标记「已按下」，直到 keyup 才解锁
+
+        if not task.is_recording:
+            # 当前没在录音 -> 开始
+            self.pool.submit(task.launch)
+        else:
+            # 当前正在录音 -> 结束并出字
+            self.pool.submit(task.finish)
 
     def handle_keyup(self, key_name, task) -> None:
         """处理按键释放事件"""
-        # 单击模式
+        # 单击模式：解锁防连发，不改变录音状态
         if not task.shortcut.hold_mode:
-            if task.pressed:
-                task.pressed = False
-                task.released = True
-                task.event.set()
+            task.released = True
             return
 
         # 长按模式

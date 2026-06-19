@@ -55,8 +55,11 @@ class FileRunner:
                 logger.info(f"文件处理完成: {file}")
             
             logger.info("所有文件已处理完成")
-            
-            input('\n按回车退出\n')
+
+            try:
+                input('\n按回车退出\n')
+            except EOFError:
+                pass  # 无控制台环境（打包为无窗口 exe）
 
         except Exception as e:
             logger.error(f"文件模式运行异常: {e}", exc_info=True)

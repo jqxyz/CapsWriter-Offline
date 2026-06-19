@@ -109,15 +109,68 @@ _lock = threading.Lock()
 
 def _get_console_hwnd():
     _init_win_api()
+    if user32 is None or kernel32 is None:
+        return 0
+
+    # 方法1：标准 API（普通 CMD 下有效，但 PyInstaller 打包 / Windows Terminal 下可能返回 0）
     hwnd = kernel32.GetConsoleWindow()
     if hwnd:
         # 在 Windows Terminal 中，GetConsoleWindow 返回的是内部窗口句柄。
-        # 为了能让“退出按钮不可用”以及“从任务栏消失”生效，我们需要操作最外层的顶层窗口。
-        # 对于普通 CMD，GetAncestor(hwnd, GA_ROOT) 依然返回 hwnd 本身。
+        # 为了能让"退出按钮不可用"以及"从任务栏消失"生效，操作最外层的顶层窗口。
         root_hwnd = user32.GetAncestor(hwnd, GA_ROOT)
         if root_hwnd:
             return root_hwnd
-    return hwnd
+        return hwnd
+
+    # 方法2（fallback）：GetConsoleWindow 返回 0 时，枚举本进程的顶层窗口找控制台。
+    # 适用于 PyInstaller 打包 exe / Windows Terminal 等情况。
+    return _find_process_window()
+
+
+def _find_process_window():
+    """枚举当前进程的顶层窗口，找到控制台/终端窗口句柄。
+
+    打包 exe 下 GetConsoleWindow 可能失效，这里用 EnumWindows 兜底：
+    找属于当前进程、可见、带标题的顶层窗口。
+    """
+    if user32 is None or kernel32 is None:
+        return 0
+    import ctypes
+    from ctypes import wintypes
+
+    pid = kernel32.GetCurrentProcessId()
+    found = []
+
+    # EnumWindows 的回调：检查每个顶层窗口是否属于本进程且可见
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _enum_cb(hwnd, lparam):
+        # 只看可见窗口
+        if not user32.IsWindowVisible(hwnd):
+            return True  # 继续枚举
+        # 取窗口所属进程
+        wpid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
+        if wpid.value != pid:
+            return True
+        # 取窗口标题
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        found.append((hwnd, buf.value))
+        return True
+
+    user32.EnumWindows(_enum_cb, 0)
+
+    if not found:
+        return 0
+    # 优先返回标题里含路径/exe 的（通常是控制台窗口）
+    for hwnd, title in found:
+        if '.exe' in title.lower() or '\\' in title:
+            return hwnd
+    # 否则返回第一个找到的
+    return found[0][0]
 
 
 def _disable_close_button(hwnd: int) -> None:
@@ -400,7 +453,7 @@ def enable_min_to_tray(name: Optional[str] = None, icon_path: Optional[str] = No
         if not hwnd:
             logger.info("未找到控制台窗口，仍将创建托盘图标（跳过窗口隐藏/禁用关闭按钮）")
         else:
-            logger.debug(f"控制台窗口 hwnd={hwnd}")
+            logger.info(f"找到控制台窗口 hwnd={hwnd}，将创建托盘并隐藏窗口")
 
         _tray_instance = _TraySystem(name, icon_path, more_options)
         _tray_instance.start()

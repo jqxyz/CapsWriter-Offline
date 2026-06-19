@@ -215,7 +215,9 @@ exe_2 = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    # 客户端作为后台输入法运行：无控制台窗口，仅托盘图标。
+    # （原本 console=True 会有黑窗口，且打包版无法可靠隐藏）
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

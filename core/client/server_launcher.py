@@ -85,10 +85,10 @@ def ensure_server_running(max_wait: float = 90.0) -> bool:
         is_py = entry.endswith('.py')
         creationflags = 0
         if os.name == 'nt':
-            # CREATE_NEW_CONSOLE: 让 server 有自己的控制台窗口（能看到它的日志）。
-            # 注意：用独立控制台意味着 client 退出时 server 不会自动跟着退，
-            # 因此 client 在退出时会主动终止它（见 stop_server）。
-            creationflags = subprocess.CREATE_NEW_CONSOLE
+            # CREATE_NO_WINDOW: 被客户端拉起的 server 完全无窗口后台运行。
+            # 不再弹黑窗口、也不最小化（根本没窗口），最干净。
+            # 出错时从 logs/server_latest.log 查日志。
+            creationflags = subprocess.CREATE_NO_WINDOW
 
         if is_py:
             # 源码版：用当前 python 跑

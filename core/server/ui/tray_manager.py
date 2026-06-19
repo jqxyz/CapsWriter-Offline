@@ -23,10 +23,9 @@ class TrayManager:
 
         # 若本服务端是由客户端自动拉起的（CAPSWRITER_EMBEDDED=1），
         # 则不显示自己的托盘图标（避免桌面出现两个图标，统一由客户端托盘作为入口）。
-        # 但仍需最小化自己的控制台窗口，否则黑窗口会一直停在桌面。
+        # 此时 server 是 CREATE_NO_WINDOW 启动的，本身无控制台窗口，无需最小化。
         if os.environ.get('CAPSWRITER_EMBEDDED') == '1':
-            logger.info("服务端由客户端自动拉起，不显示托盘，仅最小化控制台窗口")
-            self._minimize_console_only()
+            logger.info("服务端由客户端自动拉起，无窗口无托盘后台运行")
             return
 
         try:
